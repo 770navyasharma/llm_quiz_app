@@ -4,38 +4,50 @@ from langgraph.prebuilt import ToolNode
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from tools import get_rendered_html, download_file, post_request, run_code, add_dependencies
 from typing import TypedDict, Annotated, List, Any
-from langchain.chat_models import init_chat_model
 from langgraph.graph.message import add_messages
+# 👇 सीधे क्लास इम्पोर्ट करें (init_chat_model की जगह)
+from langchain_google_genai import ChatGoogleGenerativeAI 
 import os
 from dotenv import load_dotenv
+
 load_dotenv()
 
 EMAIL = os.getenv("EMAIL")
 SECRET = os.getenv("SECRET")
-RECURSION_LIMIT =  5000
+RECURSION_LIMIT = 5000
+
 # -------------------------------------------------
 # STATE
 # -------------------------------------------------
 class AgentState(TypedDict):
     messages: Annotated[List, add_messages]
 
-
 TOOLS = [run_code, get_rendered_html, download_file, post_request, add_dependencies]
 
+# -------------------------------------------------
+# GEMINI LLM SETUP (FIXED)
+# -------------------------------------------------
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# -------------------------------------------------
-# GEMINI LLM
-# -------------------------------------------------
+# Debugging check to ensure key exists
+if not GOOGLE_API_KEY:
+    print("❌ CRITICAL ERROR: GOOGLE_API_KEY not found in environment variables!")
+else:
+    print(f"✅ GOOGLE_API_KEY found (Length: {len(GOOGLE_API_KEY)})")
+
 rate_limiter = InMemoryRateLimiter(
     requests_per_second=9/60,  
     check_every_n_seconds=1,  
     max_bucket_size=9  
 )
-llm = init_chat_model(
-   model_provider="google_genai",
-   model="gemini-2.5-flash",
-   rate_limiter=rate_limiter
-).bind_tools(TOOLS)   
+
+# 👇 Direct Instantiation to fix Auth Error
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash", # Stable model version
+    google_api_key=GOOGLE_API_KEY, # Explicitly passing key param
+    rate_limiter=rate_limiter,
+    temperature=0
+).bind_tools(TOOLS)
 
 
 # -------------------------------------------------
@@ -106,7 +118,8 @@ def agent_node(state: AgentState):
 # -------------------------------------------------
 def route(state):
     last = state["messages"][-1]
-    # support both objects (with attributes) and plain dicts
+    
+    # Robust tool call check
     tool_calls = None
     if hasattr(last, "tool_calls"):
         tool_calls = getattr(last, "tool_calls", None)
@@ -115,7 +128,8 @@ def route(state):
 
     if tool_calls:
         return "tools"
-    # get content robustly
+    
+    # Robust content check
     content = None
     if hasattr(last, "content"):
         content = getattr(last, "content", None)
@@ -124,15 +138,16 @@ def route(state):
 
     if isinstance(content, str) and content.strip() == "END":
         return END
-    if isinstance(content, list) and content[0].get("text").strip() == "END":
-        return END
+    if isinstance(content, list) and len(content) > 0 and isinstance(content[0], dict):
+         if content[0].get("text", "").strip() == "END":
+             return END
+             
     return "agent"
+
 graph = StateGraph(AgentState)
 
 graph.add_node("agent", agent_node)
 graph.add_node("tools", ToolNode(TOOLS))
-
-
 
 graph.add_edge(START, "agent")
 graph.add_edge("tools", "agent")
@@ -145,12 +160,12 @@ app = graph.compile()
 
 
 # -------------------------------------------------
-# TEST
+# TEST FUNCTION
 # -------------------------------------------------
 def run_agent(url: str) -> str:
+    print(f"🚀 Starting Agent for URL: {url}")
     app.invoke({
         "messages": [{"role": "user", "content": url}]},
         config={"recursion_limit": RECURSION_LIMIT},
     )
-    print("Tasks completed succesfully")
-
+    print("✅ Tasks completed successfully")

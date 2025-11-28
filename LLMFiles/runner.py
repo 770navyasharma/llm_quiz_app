@@ -1,16 +1,31 @@
-import pandas as pd
 
-df = pd.read_csv('demo-audio-data.csv', header=None)
-# The first row is actually data, not a header, so we should consider it as part of the data.
-# Let's rename the column to something generic, e.g., 'numbers'
-df.columns = ['numbers']
+import csv
+import io
 
+file_content = open("demo-audio-data.csv", "r").read()
 cutoff = 61811
+total_sum = 0
 
-# Filter numbers greater than the cutoff
-filtered_numbers = df[df['numbers'] > cutoff]
+csv_file = io.StringIO(file_content)
+reader = csv.reader(csv_file)
 
-# Sum the filtered numbers
-total_sum = filtered_numbers['numbers'].sum()
+# Let's inspect the first few rows to see if there's a header or other issues
+rows = list(reader)
+# print("First 5 rows:", rows[:5])
 
-print(int(total_sum))
+# Assuming no header for now, based on previous attempt. If there is, next(reader) should be used.
+# If the first row is indeed a header, we need to skip it.
+# Let's assume the first row is not a header, based on the previous code that didn't skip.
+
+for row in rows:
+    for item in row:
+        try:
+            number = int(item.strip()) # strip whitespace just in case
+            if number > cutoff:
+                total_sum += number
+                # print(f"Adding {number} to sum. Current sum: {total_sum}") # Debugging line
+        except ValueError:
+            # print(f"Could not convert {item} to int. Skipping.") # Debugging line
+            pass
+
+print(total_sum)
