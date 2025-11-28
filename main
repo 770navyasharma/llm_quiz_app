@@ -1,0 +1,37 @@
+import os
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from pydantic import BaseModel
+from dotenv import load_dotenv
+from agent import QuizAgent
+
+load_dotenv()
+
+app = FastAPI()
+
+class QuizRequest(BaseModel):
+    email: str
+    secret: str
+    url: str
+
+MY_EMAIL = os.getenv("MY_EMAIL")
+MY_SECRET = os.getenv("MY_SECRET")
+
+@app.post("/")
+async def handle_quiz(request: QuizRequest, background_tasks: BackgroundTasks):
+    print(f"🔔 Request for: {request.url}")
+    
+    if request.secret != MY_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid Secret")
+    if request.email.strip() != MY_EMAIL:
+        raise HTTPException(status_code=403, detail="Invalid Email")
+
+    background_tasks.add_task(start_agent, request.url)
+    return {"message": "Agent started"}
+
+async def start_agent(url: str):
+    agent = QuizAgent()
+    await agent.start_solving(url)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
