@@ -15,3 +15,5 @@ pandas
 pypdf2
 numpy
 google-genai
+langchain-groq
+langchain-ollama
